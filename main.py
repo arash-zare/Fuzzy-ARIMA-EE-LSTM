@@ -77,6 +77,7 @@ def monitor():
 
                 # آپدیت متریک‌های Prometheus
                 for i, feature in enumerate(FEATURES):
+                    # anomaly_gauges[feature].set(anomalies[feature])
                     anomaly_gauges[feature].set(anomalies[feature])
                     mse_gauges[feature].set(mse_per_feature[feature])
                     forecast_gauges[feature].set(forecast_values[i])
