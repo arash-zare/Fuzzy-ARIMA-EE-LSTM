@@ -1,28 +1,39 @@
-🔍 Fuzzy-ARIMA-EE-LSTM-PSO Anomaly Detection System
+# 🔍 Fuzzy-ARIMA-EE-LSTM-PSO Anomaly Detection System
+
 A hybrid anomaly detection system for real-time monitoring of time-series data (e.g., network metrics, system performance). It integrates SARIMA for statistical forecasting, Ensemble-Enhanced LSTM (EE-LSTM) for temporal modeling, Fuzzy Logic for interpretable anomaly scoring, and Particle Swarm Optimization (PSO) for tuning fuzzy parameters. The system exposes results via Prometheus for seamless integration with monitoring tools like Grafana.
-🚀 Features
 
-Real-Time Anomaly Detection: Processes time-series data with sliding windows for continuous monitoring.
-Hybrid Modeling: Combines SARIMA (univariate forecasting) and LSTM (multivariate temporal patterns).
-Explainable Decisions: Fuzzy logic provides interpretable risk scores based on residuals and confidence bounds.
-PSO Optimization: Tunes fuzzy membership functions and rule weights for optimal performance.
-Prometheus Integration: Exposes metrics (anomalies, risk scores, forecasts) for observability.
-Modular Design: Easily extensible with swappable components (e.g., replace SARIMA with another model).
+---
 
-📚 Table of Contents
+## 🚀 Features
 
-Architecture
-Logic and Components
-Installation
-Usage
-Configuration
-Directory Structure
-Flowchart
-Contributing
-License
+- **Real-Time Anomaly Detection**: Processes time-series data with sliding windows for continuous monitoring.
+- **Hybrid Modeling**: Combines SARIMA (univariate forecasting) and LSTM (multivariate temporal patterns).
+- **Explainable Decisions**: Fuzzy logic provides interpretable risk scores based on residuals and confidence bounds.
+- **PSO Optimization**: Tunes fuzzy membership functions and rule weights for optimal performance.
+- **Prometheus Integration**: Exposes metrics (anomalies, risk scores, forecasts) for observability.
+- **Modular Design**: Easily extensible with swappable components (e.g., replace SARIMA with another model).
 
-🏗 Architecture
+---
+
+## 📚 Table of Contents
+
+- [Architecture](#-architecture)
+- [Logic and Components](#-logic-and-components)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Configuration](#-configuration)
+- [Directory Structure](#-directory-structure)
+- [Flowchart](#-flowchart)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 🏗 Architecture
+
 The system follows a modular pipeline, with PSO as an offline optimization step:
+
+```mermaid
 graph TD
     A[Data Source: VictoriaMetrics/Mock] --> B[Data Fetcher]
     B --> C[Preprocessing]
@@ -30,11 +41,10 @@ graph TD
     D --> D1[SARIMA]
     D --> D2[LSTM]
     D --> D3[Fuzzy Logic]
-    D3 --> D3a[PSO Optimizer<br>(Offline)]
+    D3 --> D3a[PSO Optimizer (Offline)]
     D1 & D2 & D3 --> E[Anomaly Detection]
     E --> F[Prometheus Metrics]
     F --> G[Flask Server]
-
 
 Data Fetcher: Retrieves real-time metrics from VictoriaMetrics or generates mock data.
 Preprocessing: Normalizes data and builds sliding window sequences.
