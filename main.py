@@ -4,6 +4,7 @@ import prometheus_client as prom_client
 import threading
 import time
 import numpy as np
+import joblib  # اضافه شده برای بارگذاری پارامترهای PSO
 
 from config import FEATURES, FETCH_INTERVAL, SEQ_LEN, MODEL_PATH, SCALER_PATH, FUZZY_THRESHOLD, DEVICE
 from data_fetcher import get_data
@@ -11,6 +12,7 @@ from preprocessing import normalize, load_scaler, build_sequences
 from model import SARIMAForecaster, ResidualLSTM, load_lstm, load_scaler as model_load_scaler
 from fuzzy import FuzzySystem, default_membership_params, default_rule_list, default_rule_weights
 from detect_anomalies import detect_anomaly_per_feature
+from pso import extract_membership_params, extract_rule_weights  # اضافه شده برای استفاده از توابع PSO
 
 app = Flask(__name__)
 
@@ -43,9 +45,19 @@ lstm_model = load_lstm(ResidualLSTM, MODEL_PATH)
 sarima_models = [SARIMAForecaster() for _ in FEATURES]
 sarima_fitted = [False for _ in FEATURES]
 
-# ایجاد سیستم فازی (در عمل باید پارامترهای بهینه‌شده PSO ست شود)
-from fuzzy import FuzzySystem, default_membership_params, default_rule_list, default_rule_weights
+# ایجاد سیستم فازی و تنظیم با پارامترهای بهینه PSO
+print("📦 Loading optimized fuzzy parameters...")
 fuzzy_system = FuzzySystem(default_membership_params, default_rule_weights, default_rule_list)
+try:
+    pso_params = joblib.load("optimized_fuzzy_params.pkl")
+    mem_params = extract_membership_params(pso_params, fuzzy_system)
+    rule_weights = extract_rule_weights(pso_params, fuzzy_system)
+    fuzzy_system.set_params(membership_params=mem_params, rule_weights=rule_weights)
+    print("✅ Loaded optimized fuzzy parameters")
+except FileNotFoundError:
+    print("⚠️ No optimized fuzzy parameters found. Using default parameters.")
+except Exception as e:
+    print(f"❌ Error loading PSO parameters: {e}. Using default parameters.")
 
 sequence_buffer = []
 
