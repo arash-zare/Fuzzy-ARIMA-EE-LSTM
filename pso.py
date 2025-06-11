@@ -105,11 +105,11 @@ def fetch_data_from_victoriametrics(start_time, end_time, step="30s"):
                 values = [float(v[1]) for v in result[0]['values']]
                 data.append(values)
             else:
-                print(f"⚠️ No data for {feature}. Filling with NaN.")
-                data.append([np.nan] * (len(data[0]) if data else 100))
+                print(f"⚠️ No data for {feature}. Filling with zeros.")
+                data.append([0.0] * (len(data[0]) if data else 100))
         except Exception as e:
             print(f"❌ Error fetching {feature}: {e}")
-            data.append([np.nan] * (len(data[0]) if data else 100))
+            data.append([0.0] * (len(data[0]) if data else 100))
     
     data = np.array(data).T
     nan_count = np.isnan(data).sum()
@@ -119,12 +119,15 @@ def fetch_data_from_victoriametrics(start_time, end_time, step="30s"):
             col = data[:, j]
             mask = np.isnan(col)
             if mask.any():
-                for i in range(1, len(col)):
-                    if mask[i] and not mask[i-1]:
-                        col[i] = col[i-1]
-                mask = np.isnan(col)
-                if mask.any():
-                    col[mask] = np.nanmean(col)
+                col[mask] = np.nanmean(col)  # پر کردن با میانگین
+                if np.isnan(col).any():  # اگر هنوز NaN باقی ماند
+                    col[np.isnan(col)] = 0.0
+    # بررسی واریانس
+    stds = np.std(data, axis=0)
+    for j, (std, feature) in enumerate(zip(stds, FEATURES)):
+        if std < 1e-8:
+            print(f"⚠️ Low variance in {feature}. Setting to zeros.")
+            data[:, j] = 0.0
     return data
 
 def generate_training_data_from_victoriametrics(start_time="now-1d", end_time="now", step="30s", max_sequences=100):

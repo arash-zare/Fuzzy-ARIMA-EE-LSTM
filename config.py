@@ -1,11 +1,9 @@
 # config.py
-# Central configuration for Fuzzy ARIMA-EE-LSTM-PSO anomaly detection platform
-
 import torch
 
-### Data Fetching
+# -------- Data Fetching ---------
 VICTORIA_METRICS_URL = "http://192.168.1.98:8428"
-FETCH_INTERVAL = 30  # seconds
+FETCH_INTERVAL = 5
 
 FEATURE_QUERIES = {
     "network_receive_rate": 'rate(node_network_receive_bytes_total[1m])',
@@ -19,46 +17,49 @@ FEATURE_QUERIES = {
 }
 FEATURES = list(FEATURE_QUERIES.keys())
 INPUT_DIM = len(FEATURES)
+INPUT_DIM_EE = INPUT_DIM * 3  # برای EE-LSTM
 
-### Model parameters
-SEQ_LEN = 16                   # Length of input sequence for LSTM (timesteps)
-FORECAST_STEPS = 2             # Number of steps to forecast ahead
+# ---------- Model ----------
+SEQ_LEN = 16      # input length to LSTM
+FORECAST_STEPS = 2
 MODEL_PATH = "sarima_eelstm_model.pth"
 SCALER_PATH = "sarima_eelstm_scaler.pkl"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-### SARIMA config
-SARIMA_ORDER = (1, 1, 1)              # (p, d, q)
-SARIMA_SEASONAL_ORDER = (0, 0, 0, 0)  # (P, D, Q, s) -- adjust for your data
+# ---------- SARIMA ----------
+SARIMA_ORDER = (1, 1, 1)
+SARIMA_SEASONAL_ORDER = (0, 0, 0, 0)
 
-### LSTM config
+# ---------- LSTM ----------
 HIDDEN_DIM = 64
 NUM_LAYERS = 2
 LSTM_LEARNING_RATE = 1e-3
 LSTM_EPOCHS = 50
 LSTM_BATCH_SIZE = 32
 
-### Fuzzy logic config
-FUZZY_MEMBERSHIP_TYPE = "triangular"        # 'triangular', 'trapezoidal', ...
-FUZZY_RULES_COUNT = 6                       # Number of fuzzy rules (example)
+# ---------- Fuzzy Logic ----------
+FUZZY_MEMBERSHIP_TYPE = "triangular"
+FUZZY_RULES_COUNT = 6
 FUZZY_INPUTS = ["residual", "upper_diff", "lower_diff"]
 FUZZY_OUTPUT = "anomaly_risk"
-FUZZY_THRESHOLD = 0.1                       # Default threshold for anomaly risk
+FUZZY_THRESHOLD = 0.5  # Default threshold, adjust based on validation!
+FUZZY_LEVELS = [0.0, 0.5, 1.0]  # For "low", "medium", "high" output mapping
 
-### PSO (Particle Swarm Optimization) config
-PSO_PARTICLES = 30          # Number of particles in swarm
-PSO_ITER = 40               # Maximum PSO iterations
-PSO_INERTIA = 0.7           # Inertia weight (w)
-PSO_COGNITIVE = 1.5         # Cognitive component (c1)
-PSO_SOCIAL = 1.5            # Social component (c2)
-PSO_ALPHA = 0.7             # Weight for (1-Accuracy) in loss
-PSO_BETA = 0.3              # Weight for False Positive Rate in loss
+# ---------- PSO ----------
+PSO_PARTICLES = 30
+PSO_ITER = 40
+PSO_INERTIA = 0.7
+PSO_COGNITIVE = 1.5
+PSO_SOCIAL = 1.5
+PSO_ALPHA = 0.7
+PSO_BETA = 0.3
+PSO_BOUNDS_MEMBERSHIP = [0, 2]  # [min, max] for all fuzzy params (customize if needed)
 
-### Anomaly threshold for each feature (use fuzzy threshold for main output)
+# ---------- Anomaly Thresholds ----------
 THRESHOLDS = {
     'network_receive_rate': 7200,
     'network_transmit_rate': 18000,
-    'active_connections': 1,
+    'active_connections': 40,  # update if needed
     'receive_packets_rate': 50,
     'receive_errors_rate': 10,
     'cpu_system_usage': 0.01,
@@ -66,9 +67,9 @@ THRESHOLDS = {
     'receive_drops_rate': 10,
 }
 
-### Evaluation metrics
+# ---------- Evaluation ----------
 METRICS = ["F1", "Precision", "Recall", "RMSE"]
 
-# For reproducibility (optional)
+# ---------- Random seed ----------
 SEED = 42
 torch.manual_seed(SEED)

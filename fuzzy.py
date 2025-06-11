@@ -1,23 +1,42 @@
 import numpy as np
-from config import FUZZY_MEMBERSHIP_TYPE, FUZZY_INPUTS, FUZZY_OUTPUT, FUZZY_RULES_COUNT
+from config import FUZZY_INPUTS, FUZZY_LEVELS
 
-# --- توابع عضویت مثلثی ---
-def triangular_membership(x, a, b, c):
-    return np.maximum(np.minimum((x - a) / (b - a + 1e-8), (c - x) / (c - b + 1e-8)), 0)
-
-# --- سیستم فازی پایه ---
 class FuzzySystem:
-    def __init__(self, membership_params, rule_weights, rule_list=None):
-        """
-        membership_params: dict مثل {"residual": [(a1,b1,c1), (a2,b2,c2), (a3,b3,c3)], ...}
-        rule_weights: وزن هر قاعده (np.array)
-        rule_list: لیست قواعد [("High", "Low", "Medium") ...]
-        """
-        self.membership_params = membership_params
-        self.rule_weights = rule_weights
-        self.rule_list = rule_list if rule_list is not None else []
-        self.input_names = FUZZY_INPUTS
-        self.output_name = FUZZY_OUTPUT
+    def __init__(self, membership_params, rule_weights, rule_list, input_names=FUZZY_INPUTS, output_levels=FUZZY_LEVELS):
+        self.input_names = input_names
+        self.membership_params = membership_params  # dict: input -> list of tuples (a,b,c) for each level
+        self.rule_weights = rule_weights            # list: وزن هر قاعده
+        self.rule_list = rule_list                  # list of dict: {'if': ..., 'then': ...}
+        self.output_levels = output_levels          # [0, 0.5, 1.0] ← mapping به خروجی crisp
+
+    def triangular(self, x, a, b, c):
+        # تابع عضویت مثلثی
+        if a == b == c:
+            return 1.0 if x == a else 0.0
+        return max(min((x-a)/(b-a+1e-8), (c-x)/(c-b+1e-8)), 0.0)
+
+    def fuzzify(self, x, varname):
+        # مقداردهی عضویت برای یک متغیر
+        params = self.membership_params[varname]
+        memberships = [self.triangular(x, *abc) for abc in params]
+        return memberships
+
+    def infer(self, input_dict):
+        # مرحله فازی و rule evaluation
+        rule_strengths = []
+        for i, rule in enumerate(self.rule_list):
+            cond_strength = 1.0
+            for var in self.input_names:
+                val = input_dict[var]
+                level = rule['if'][var]
+                cond_strength *= self.fuzzify(val, var)[level]
+            rule_strengths.append(cond_strength * self.rule_weights[i])
+        if sum(rule_strengths) == 0:
+            # هیچ قاعده‌ای فعال نشد، خروجی پیش‌فرض
+            return np.mean(self.output_levels)
+        # defuzzification: weighted average
+        risk = sum(s * lvl for s, lvl in zip(rule_strengths, self.output_levels)) / (sum(rule_strengths)+1e-8)
+        return risk
 
     def set_params(self, membership_params=None, rule_weights=None):
         if membership_params is not None:
@@ -25,65 +44,34 @@ class FuzzySystem:
         if rule_weights is not None:
             self.rule_weights = rule_weights
 
-    def compute_memberships(self, input_dict):
-        """
-        input_dict: {"residual": val, "upper_diff": val, "lower_diff": val}
-        خروجی: dict {"residual": [μ_low, μ_medium, μ_high], ...}
-        """
-        memberships = {}
-        for var in self.input_names:
-            params = self.membership_params[var]
-            vals = [triangular_membership(input_dict[var], *p) for p in params]
-            memberships[var] = vals
-        return memberships
-
-    def infer(self, input_dict):
-        """
-        خروجی: anomaly_risk در بازه [0,1]
-        """
-        memberships = self.compute_memberships(input_dict)
-        # یک مثال ساده: فرض کنیم rule_list به شکل [("High","Low","Medium"), ...] و output سطح risk (مثلاً [0, 0.5, 1])
-        output_levels = [0.0, 0.5, 1.0]  # [Low, Medium, High]
-        rule_outputs = []
-        for i, rule in enumerate(self.rule_list):
-            # مقدار عضویت هر ورودی بر اساس سطح متناظر قاعده
-            μs = [memberships[var][level_idx(label)] for var, label in zip(self.input_names, rule)]
-            rule_strength = np.prod(μs)
-            rule_outputs.append(rule_strength * output_levels[level_idx(rule[-1])] * self.rule_weights[i])
-        # جمع وزنی قواعد
-        if sum(rule_outputs) > 0:
-            risk = sum(rule_outputs) / (sum([abs(w) for w in self.rule_weights]) + 1e-8)
-        else:
-            risk = 0.0
-        return np.clip(risk, 0, 1)
-
-def level_idx(level):
-    return {"Low": 0, "Medium": 1, "High": 2}[level]
-
-# --- مقداردهی نمونه ---
+# ---------- پارامترها و قواعد پیش‌فرض ----------
 default_membership_params = {
-    "residual":   [(0, 0, 1), (0, 1, 2), (1, 2, 2.5)],
-    "upper_diff": [(0, 0, 0.5), (0, 0.5, 1), (0.5, 1, 1.5)],
-    "lower_diff": [(0, 0, 0.5), (0, 0.5, 1), (0.5, 1, 1.5)],
+    "residual":   [(0, 0, 1), (0, 1, 2), (1, 2, 2)],
+    "upper_diff": [(0, 0, 1), (0, 1, 2), (1, 2, 2)],
+    "lower_diff": [(0, 0, 1), (0, 1, 2), (1, 2, 2)],
 }
+# به ترتیب: Low, Med, High ← index=0,1,2
+
 default_rule_list = [
-    ("High", "Low", "Low"),     # Rule 1
-    ("Medium", "Medium", "Medium"), # Rule 2
-    ("Low", "High", "Low"),     # Rule 3
-    ("High", "High", "High"),   # Rule 4
-    ("Low", "Low", "Low"),      # Rule 5
-    ("Medium", "Low", "High")   # Rule 6
+    {"if": {"residual": 2, "upper_diff": 0, "lower_diff": 1}, "then": 2},  # High risk
+    {"if": {"residual": 1, "upper_diff": 1, "lower_diff": 1}, "then": 1},  # Med
+    {"if": {"residual": 0, "upper_diff": 2, "lower_diff": 0}, "then": 1},
+    {"if": {"residual": 2, "upper_diff": 2, "lower_diff": 2}, "then": 2},
+    {"if": {"residual": 1, "upper_diff": 1, "lower_diff": 2}, "then": 1},
+    {"if": {"residual": 2, "upper_diff": 1, "lower_diff": 1}, "then": 2},
 ]
-default_rule_weights = np.ones(len(default_rule_list))
+default_rule_weights = [1, 1, 1, 1, 1, 1]
 
-# ایجاد شی فازی نمونه (قابل تغییر توسط PSO)
-fuzzy_system = FuzzySystem(
-    membership_params=default_membership_params,
-    rule_weights=default_rule_weights,
-    rule_list=default_rule_list
-)
+# ---------- Fuzzy Evaluation برای main ----------
+def evaluate_fuzzy_anomaly(pred, actual, upper, lower, fuzzy_system=None):
+    # pred, actual, upper, lower: float
+    if fuzzy_system is None:
+        fuzzy_system = FuzzySystem(default_membership_params, default_rule_weights, default_rule_list)
+    inputs = {
+        "residual": actual - pred,
+        "upper_diff": actual - upper,
+        "lower_diff": actual - lower,
+    }
+    risk = fuzzy_system.infer(inputs)
+    return risk
 
-# --- API برای main/detect_anomalies ---
-def evaluate_fuzzy_anomaly(residual, upper_diff, lower_diff, fuzzy_system=fuzzy_system):
-    input_dict = {"residual": residual, "upper_diff": upper_diff, "lower_diff": lower_diff}
-    return fuzzy_system.infer(input_dict)

@@ -1,138 +1,58 @@
-# preprocessing.py
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-import joblib
-from config import INPUT_DIM, SEQ_LEN  # اضافه شده برای اعتبارسنجی
+from config import SEQ_LEN, INPUT_DIM, SCALER_PATH
 
-def normalize(data, method="z-score", scaler=None, fit=False, scaler_path=None):
+def handle_nan(data, fill_value="mean"):
+    data = np.array(data)
+    if fill_value == "mean":
+        means = np.nanmean(data, axis=0)
+        inds = np.where(np.isnan(data))
+        data[inds] = np.take(means, inds[1])
+    elif fill_value == "ffill":
+        for i in range(1, data.shape[0]):
+            mask = np.isnan(data[i])
+            data[i, mask] = data[i-1, mask]
+    return data
+
+def normalize(X, method="z-score", scaler=None, fit=False):
     """
-    نرمال‌سازی داده‌ها با استفاده از StandardScaler یا MinMaxScaler.
-    
-    Args:
-        data: np.ndarray (n_samples, n_features) - داده‌های ورودی
-        method: str - نوع نرمال‌سازی ("z-score" یا "minmax")
-        scaler: Scaler object - اگر ارائه شود، از این scaler استفاده می‌شود
-        fit: bool - اگر True باشد، scaler روی داده‌ها فیت می‌شود
-        scaler_path: str - مسیر ذخیره/بارگذاری scaler
-    
-    Returns:
-        tuple: (normalized_data, fitted_scaler)
-    
-    Raises:
-        ValueError: اگر شکل داده‌ها نامعتبر باشد یا تعداد فیچرها با INPUT_DIM سازگار نباشد
+    - Training: fit=True, method="z-score"
+    - Inference: scaler only
     """
-    # اعتبارسنجی اولیه
-    if data is None or not isinstance(data, np.ndarray) or data.ndim != 2:
-        raise ValueError(f"Invalid input data: Expected 2D numpy array, got {type(data)} or shape {data.shape if data is not None else None}")
-    
-    if data.shape[1] != INPUT_DIM:
-        raise ValueError(f"Number of features ({data.shape[1]}) does not match INPUT_DIM ({INPUT_DIM})")
-    
-    if data.shape[0] < 1:
-        raise ValueError("Input data must have at least one sample")
-
-    # مدیریت مقادیر نان
-    nan_count = np.isnan(data).sum()
-    if nan_count > 0:
-        print(f"⚠️ Warning: Found {nan_count} NaN values in input data. Applying forward-fill and mean imputation...")
-        # Forward-fill برای حفظ پیوستگی سری زمانی
-        for j in range(data.shape[1]):
-            col = data[:, j]
-            mask = np.isnan(col)
-            if mask.any():
-                # Forward-fill
-                for i in range(1, len(col)):
-                    if mask[i] and not mask[i-1]:
-                        col[i] = col[i-1]
-                # پر کردن باقی‌مانده نان‌ها با میانگین ستون
-                mask = np.isnan(col)
-                if mask.any():
-                    col[mask] = np.nanmean(col)
-        # بررسی نهایی برای نان‌ها
-        if np.isnan(data).any():
-            raise ValueError("Failed to impute all NaN values in input data")
-
-    # مقداردهی scaler
-    if scaler is None:
-        scaler = StandardScaler() if method == "z-score" else MinMaxScaler()
-        if fit:
-            scaler.fit(data)
-            if scaler_path:
-                joblib.dump(scaler, scaler_path)
-    else:
-        if fit:
-            scaler.fit(data)
-            if scaler_path:
-                joblib.dump(scaler, scaler_path)
+    if fit:
+        if method == "z-score":
+            scaler = StandardScaler()
+        elif method == "minmax":
+            scaler = MinMaxScaler()
         else:
-            if scaler_path:
-                scaler = joblib.load(scaler_path)
+            raise ValueError("Unknown normalization method")
+        X_scaled = scaler.fit_transform(X)
+        return X_scaled, scaler
+    elif scaler is not None:
+        X_scaled = scaler.transform(X)
+        return X_scaled
+    else:
+        raise ValueError("Either fit=True with method or provide a fitted scaler.")
 
-    # نرمال‌سازی داده‌ها
-    data_scaled = scaler.transform(data)
-    return data_scaled, scaler
-
-def inverse_transform(data_scaled, scaler):
-    """
-    تبدیل داده‌های نرمال‌شده به مقیاس اصلی.
-    
-    Args:
-        data_scaled: np.ndarray - داده‌های نرمال‌شده
-        scaler: Scaler object - اسکیلر استفاده‌شده برای نرمال‌سازی
-    
-    Returns:
-        np.ndarray - داده‌های در مقیاس اصلی
-    """
-    return scaler.inverse_transform(data_scaled)
-
-def build_sequences(data, seq_len=SEQ_LEN):
-    """
-    ساخت sequence‌های sliding window برای آموزش LSTM.
-    
-    Args:
-        data: np.ndarray, shape (n_samples, n_features)
-        seq_len: int - طول هر sequence ورودی
-    
-    Returns:
-        X: np.ndarray, shape (n_sequences, seq_len, n_features)
-        y: np.ndarray, shape (n_sequences, n_features)
-    """
-    if data.shape[0] < seq_len + 1:
-        print(f"⚠️ Warning: Not enough samples ({data.shape[0]}) for seq_len={seq_len}. Returning empty sequences.")
+def build_sequences(X, seq_len=SEQ_LEN):
+    X_seq, y_seq = [], []
+    if len(X) <= seq_len:
         return np.array([]), np.array([])
+    for i in range(len(X) - seq_len):
+        X_seq.append(X[i:i+seq_len])
+        y_seq.append(X[i+seq_len])
+    X_seq = np.array(X_seq)
+    y_seq = np.array(y_seq)
+    return X_seq, y_seq
 
-    X, y = [], []
-    for i in range(len(data) - seq_len):
-        X.append(data[i:i+seq_len])
-        y.append(data[i+seq_len])  # پیش‌بینی گام بعدی
-    return np.array(X), np.array(y)
-
-def split_data(data, ratio=0.7):
-    """
-    تقسیم داده‌ها به مجموعه‌های آموزشی و تست (به‌صورت ترتیبی برای سری‌های زمانی).
-    
-    Args:
-        data: np.ndarray - داده‌های ورودی
-        ratio: float - نسبت تقسیم برای داده‌های آموزشی
-    
-    Returns:
-        tuple: (train_data, test_data)
-    """
-    n = int(len(data) * ratio)
-    return data[:n], data[n:]
-
-def save_scaler(scaler, path):
+def save_scaler(scaler, path=SCALER_PATH):
+    import joblib
     joblib.dump(scaler, path)
 
-def load_scaler(path):
+def load_scaler(path=SCALER_PATH):
+    import joblib
     return joblib.load(path)
 
-# Example: Usage in pipeline
-if __name__ == "__main__":
-    # داده نمونه
-    data = np.random.rand(100, INPUT_DIM)  # (timesteps, features)
-    data_scaled, scaler = normalize(data, method="z-score", fit=True, scaler_path="scaler.pkl")
-    X, y = build_sequences(data_scaled, seq_len=SEQ_LEN)
-    train_X, test_X = split_data(X, ratio=0.7)
-    train_y, test_y = split_data(y, ratio=0.7)
-    print("X shape:", X.shape, "y shape:", y.shape)
+def check_shape(X, seq_len=SEQ_LEN, input_dim=INPUT_DIM):
+    assert X.shape[1] == seq_len, f"X seq_len mismatch: {X.shape[1]} != {seq_len}"
+    assert X.shape[2] == input_dim, f"X input_dim mismatch: {X.shape[2]} != {input_dim}"
